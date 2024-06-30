@@ -60,6 +60,7 @@ CATEGORY_MAP = {
     "hentaihand"     : "HentaiHand",
     "hentaihere"     : "HentaiHere",
     "hentaiimg"      : "Hentai Image",
+    "hentainexus"    : "HentaiNexus",
     "hitomi"         : "Hitomi.la",
     "horne"          : "horne",
     "idolcomplex"    : "Idol Complex",
@@ -137,12 +138,14 @@ CATEGORY_MAP = {
     "tumblrgallery"  : "TumblrGallery",
     "vanillarock"    : "もえぴりあ",
     "vidyart2"       : "/v/idyart2",
+    "vidyapics"      : "Vidya Booru",
     "vk"             : "VK",
     "vsco"           : "VSCO",
     "wallpapercave"  : "Wallpaper Cave",
     "webmshare"      : "webmshare",
     "webtoons"       : "Webtoon",
     "wikiart"        : "WikiArt.org",
+    "wikigg"         : "wiki.gg",
     "wikimediacommons": "Wikimedia Commons",
     "xbunkr"         : "xBunkr",
     "xhamster"       : "xHamster",
@@ -163,6 +166,7 @@ SUBCATEGORY_MAP = {
     "media"  : "Media Files",
     "note"   : "Images from Notes",
     "popular": "Popular Images",
+    "profile": "User Profile Data",
     "recent" : "Recent Images",
     "search" : "Search Results",
     "status" : "Images from Statuses",
@@ -341,12 +345,12 @@ URL_MAP = {
 
 _OAUTH = '<a href="https://github.com/mikf/gallery-dl#oauth">OAuth</a>'
 _COOKIES = '<a href="https://github.com/mikf/gallery-dl#cookies">Cookies</a>'
-_APIKEY_DB = \
-    '<a href="configuration.rst#extractorderpibooruapi-key">API Key</a>'
-_APIKEY_WH = \
-    '<a href="configuration.rst#extractorwallhavenapi-key">API Key</a>'
-_APIKEY_WY = \
-    '<a href="configuration.rst#extractorweasylapi-key">API Key</a>'
+_APIKEY_DB = ('<a href="https://gdl-org.github.io/docs/configuration.html'
+              '#extractor-derpibooru-api-key">API Key</a>')
+_APIKEY_WH = ('<a href="https://gdl-org.github.io/docs/configuration.html'
+              '#extractor-wallhaven-api-key">API Key</a>')
+_APIKEY_WY = ('<a href="https://gdl-org.github.io/docs/configuration.html'
+              '#extractor-weasyl-api-key">API Key</a>')
 
 AUTH_MAP = {
     "aibooru"        : "Supported",
@@ -354,11 +358,13 @@ AUTH_MAP = {
     "atfbooru"       : "Supported",
     "baraag"         : _OAUTH,
     "bluesky"        : "Supported",
+    "booruvar"       : "Supported",
     "coomerparty"    : "Supported",
     "danbooru"       : "Supported",
     "derpibooru"     : _APIKEY_DB,
     "deviantart"     : _OAUTH,
     "e621"           : "Supported",
+    "e6ai"           : "Supported",
     "e926"           : "Supported",
     "e-hentai"       : "Supported",
     "exhentai"       : "Supported",
@@ -366,6 +372,7 @@ AUTH_MAP = {
     "fantia"         : _COOKIES,
     "flickr"         : _OAUTH,
     "furaffinity"    : _COOKIES,
+    "furbooru"       : "API Key",
     "horne"          : "Required",
     "idolcomplex"    : "Supported",
     "imgbb"          : "Supported",
@@ -386,7 +393,6 @@ AUTH_MAP = {
     "reddit"         : _OAUTH,
     "sankaku"        : "Supported",
     "seiga"          : _COOKIES,
-    "seisoparty"     : "Supported",
     "smugmug"        : _OAUTH,
     "subscribestar"  : "Supported",
     "tapas"          : "Supported",
@@ -462,7 +468,7 @@ def build_extractor_list():
     """Generate a sorted list of lists of extractor classes"""
     categories = collections.defaultdict(lambda: collections.defaultdict(list))
     default = categories[""]
-    domains = {}
+    domains = {"": ""}
 
     for extr in extractor._list_classes():
         category = extr.category
@@ -474,6 +480,9 @@ def build_extractor_list():
                 domains[category] = domain(extr)
         else:
             base = categories[extr.basecategory]
+            if not extr.instances:
+                base[""].append(extr.subcategory)
+                continue
             for category, root, info in extr.instances:
                 base[category].append(extr.subcategory)
                 if category not in domains:
@@ -585,5 +594,5 @@ Consider all listed sites to potentially be NSFW.
 categories, domains = build_extractor_list()
 PATH = (sys.argv[1] if len(sys.argv) > 1 else
         util.path("docs", "supportedsites.md"))
-with util.lazy(PATH) as file:
-    file.write(generate_output(COLUMNS, categories, domains))
+with util.lazy(PATH) as fp:
+    fp.write(generate_output(COLUMNS, categories, domains))

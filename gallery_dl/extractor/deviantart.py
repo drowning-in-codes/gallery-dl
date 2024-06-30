@@ -84,6 +84,16 @@ class DeviantartExtractor(Extractor):
         else:
             self.commit_journal = None
 
+    def request(self, url, **kwargs):
+        if "fatal" not in kwargs:
+            kwargs["fatal"] = False
+        while True:
+            response = Extractor.request(self, url, **kwargs)
+            if response.status_code != 403 or \
+                    b"Request blocked." not in response.content:
+                return response
+            self.wait(seconds=300, reason="CloudFront block")
+
     def skip(self, num):
         self.offset += num
         return num
@@ -462,18 +472,12 @@ class DeviantartExtractor(Extractor):
 
     def _limited_request(self, url, **kwargs):
         """Limits HTTP requests to one every 2 seconds"""
-        kwargs["fatal"] = None
         diff = time.time() - DeviantartExtractor._last_request
         if diff < 2.0:
             self.sleep(2.0 - diff, "request")
-
-        while True:
-            response = self.request(url, **kwargs)
-            if response.status_code != 403 or \
-                    b"Request blocked." not in response.content:
-                DeviantartExtractor._last_request = time.time()
-                return response
-            self.wait(seconds=180)
+        response = self.request(url, **kwargs)
+        DeviantartExtractor._last_request = time.time()
+        return response
 
     def _fetch_premium(self, deviation):
         try:
@@ -1418,9 +1422,14 @@ class DeviantartOAuthAPI():
             self.authenticate(None if public else self.refresh_token_key)
             kwargs["headers"] = self.headers
             response = self.extractor.request(url, **kwargs)
-            data = response.json()
-            status = response.status_code
 
+            try:
+                data = response.json()
+            except ValueError:
+                self.log.error("Unable to parse API response")
+                data = {}
+
+            status = response.status_code
             if 200 <= status < 400:
                 if self.delay > self.delay_min:
                     self.delay -= 1
@@ -1448,9 +1457,8 @@ class DeviantartOAuthAPI():
                         self.log.info(
                             "Register your own OAuth application and use its "
                             "credentials to prevent this error: "
-                            "https://github.com/mikf/gallery-dl/blob/master/do"
-                            "cs/configuration.rst#extractordeviantartclient-id"
-                            "--client-secret")
+                            "https://gdl-org.github.io/docs/configuration.html"
+                            "#extractor-deviantart-client-id-client-secret")
             else:
                 if log:
                     self.log.error(msg)
@@ -1722,15 +1730,16 @@ class DeviantartEclipseAPI():
         url = "{}/{}/about".format(self.extractor.root, user)
         page = self.request(url).text
 
-        gruserid, pos = text.extract(page, ' data-userid="', '"')
+        gruser_id = text.extr(page, ' data-userid="', '"')
 
-        pos = page.find('\\"type\\":\\"watching\\"', pos)
+        pos = page.find('\\"name\\":\\"watching\\"')
         if pos < 0:
-            raise exception.NotFoundError("module")
-        moduleid = text.rextract(page, '\\"id\\":', ',', pos)[0].strip('" ')
+            raise exception.NotFoundError("'watching' module ID")
+        module_id = text.rextract(
+            page, '\\"id\\":', ',', pos)[0].strip('" ')
 
         self._fetch_csrf_token(page)
-        return gruserid, moduleid
+        return gruser_id, module_id
 
     def _fetch_csrf_token(self, page=None):
         if page is None:

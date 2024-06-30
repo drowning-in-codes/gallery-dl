@@ -44,28 +44,29 @@ update-dev() {
 
 build-python() {
     cd "${ROOTDIR}"
-    echo Building bdist_wheel and sdist
+    echo Building sdist and wheel
 
-    python setup.py bdist_wheel sdist
+    python -m build
 }
 
 build-linux() {
     cd "${ROOTDIR}"
     echo Building Linux executable
 
-    build-vm 'ubuntu22.04' 'gallery-dl.bin'
+    build-vm 'ubuntu22.04' 'gallery-dl.bin' 'linux'
 }
 
 build-windows() {
     cd "${ROOTDIR}"
     echo Building Windows executable
 
-    build-vm 'windows7_x86_sp1' 'gallery-dl.exe'
+    build-vm 'windows7_x86_sp1' 'gallery-dl.exe' 'windows'
 }
 
 build-vm() {
     VMNAME="$1"
     BINNAME="$2"
+    LABEL="$3"
     TMPPATH="/tmp/gallery-dl/dist/$BINNAME"
 
     # launch VM
@@ -76,6 +77,11 @@ build-vm() {
     mkdir -p /tmp/gallery-dl
     cp -a -t /tmp/gallery-dl -- \
         ./gallery_dl ./scripts ./data ./setup.py ./README.rst
+
+    # update __variant__
+    sed -i \
+        -e "s#\(__variant__ *=\).*#\1 \"stable/${LABEL}\"#" \
+        /tmp/gallery-dl/gallery_dl/version.py
 
     # remove old executable
     rm -f "./dist/$BINNAME"
@@ -112,6 +118,14 @@ changelog() {
         -e "s*\([( ]\)#\([0-9]\+\)*\1[#\2](https://github.com/mikf/gallery-dl/issues/\2)*g" \
         -e "s*^## \w\+\$*## ${NEWVERSION} - $(date +%Y-%m-%d)*" \
         "${CHANGELOG}"
+
+    mv "${CHANGELOG}" "${CHANGELOG}.orig"
+
+    # - remove all but the latest entries
+    sed -n \
+        -e '/^## /,/^$/ { /^$/q; p }' \
+        "${CHANGELOG}.orig" \
+    > "${CHANGELOG}"
 }
 
 supportedsites() {
@@ -129,6 +143,7 @@ upload-git() {
     cd "${ROOTDIR}"
     echo Pushing changes to github
 
+    mv "${CHANGELOG}.orig" "${CHANGELOG}" || true
     git add "gallery_dl/version.py" "${README}" "${CHANGELOG}"
     git commit -S -m "release version ${NEWVERSION}"
     git tag -s -m "version ${NEWVERSION}" "v${NEWVERSION}"

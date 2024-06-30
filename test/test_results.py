@@ -25,7 +25,6 @@ from test import results  # noqa E402
 
 # temporary issues, etc.
 BROKEN = {
-    "photobucket",
 }
 
 CONFIG = {
@@ -54,6 +53,7 @@ AUTH_CONFIG = (
     "cookies",
     "api-key",
     "client-id",
+    "access-token",
     "refresh-token",
 )
 
@@ -88,6 +88,19 @@ class TestExtractorResults(unittest.TestCase):
         result.pop("#comment", None)
         only_matching = (len(result) <= 3)
 
+        auth = result.get("#auth")
+        if auth is None:
+            auth = (result["#category"][1] in AUTH)
+        elif not auth:
+            for key in AUTH_CONFIG:
+                config.set((), key, None)
+
+        if auth:
+            extr = result["#class"].from_url(result["#url"])
+            if not any(extr.config(key) for key in AUTH_CONFIG):
+                self._skipped.append((result["#url"], "no auth"))
+                only_matching = True
+
         if only_matching:
             content = False
         else:
@@ -95,21 +108,6 @@ class TestExtractorResults(unittest.TestCase):
                 for key, value in result["#options"].items():
                     key = key.split(".")
                     config.set(key[:-1], key[-1], value)
-
-            auth = result.get("#auth")
-            if auth is None:
-                auth = (result["#category"][1] in AUTH)
-            elif not auth:
-                for key in AUTH_CONFIG:
-                    config.set((), key, None)
-
-            if auth:
-                extr = result["#class"].from_url(result["#url"])
-                if not any(extr.config(key) for key in AUTH_CONFIG):
-                    msg = "no auth"
-                    self._skipped.append((result["#url"], msg))
-                    self.skipTest(msg)
-
             if "#range" in result:
                 config.set((), "image-range"  , result["#range"])
                 config.set((), "chapter-range", result["#range"])
@@ -442,7 +440,15 @@ def generate_tests():
             tests = results.category(category)
 
         if subcategory:
-            tests = [t for t in tests if t["#category"][-1] == subcategory]
+            if subcategory.startswith("+"):
+                url = subcategory[1:]
+                tests = [t for t in tests if url in t["#url"]]
+            elif subcategory.startswith("~"):
+                com = subcategory[1:]
+                tests = [t for t in tests
+                         if "#comment" in t and com in t["#comment"].lower()]
+            else:
+                tests = [t for t in tests if t["#category"][-1] == subcategory]
     else:
         tests = results.all()
 

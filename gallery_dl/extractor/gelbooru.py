@@ -51,19 +51,44 @@ class GelbooruBase():
         params["pid"] = self.page_start
         params["limit"] = self.per_page
         limit = self.per_page // 2
+        pid = False
+
+        if "tags" in params:
+            tags = params["tags"].split()
+            op = "<"
+            id = False
+
+            for tag in tags:
+                if tag.startswith("sort:"):
+                    if tag == "sort:id:asc":
+                        op = ">"
+                    elif tag == "sort:id" or tag.startswith("sort:id:"):
+                        op = "<"
+                    else:
+                        pid = True
+                elif tag.startswith("id:"):
+                    id = True
+
+            if not pid:
+                if id:
+                    tag = "id:" + op
+                    tags = [t for t in tags if not t.startswith(tag)]
+                tags = "{} id:{}".format(" ".join(tags), op)
 
         while True:
             posts = self._api_request(params)
 
-            for post in posts:
-                yield post
+            yield from posts
 
             if len(posts) < limit:
                 return
 
-            if "pid" in params:
-                del params["pid"]
-            params["tags"] = "{} id:<{}".format(self.tags, post["id"])
+            if pid:
+                params["pid"] += 1
+            else:
+                if "pid" in params:
+                    del params["pid"]
+                params["tags"] = tags + str(posts[-1]["id"])
 
     def _pagination_html(self, params):
         url = self.root + "/index.php"
@@ -172,26 +197,31 @@ class GelbooruFavoriteExtractor(GelbooruBase,
             "id"   : self.favorite_id,
             "limit": "2",
         }
-
         data = self._api_request(params, None, True)
 
         count = data["@attributes"]["count"]
-        if count <= self.offset:
-            return ()
+        self.log.debug("API reports %s favorite entries", count)
 
         favs = data["favorite"]
         try:
             order = 1 if favs[0]["id"] < favs[1]["id"] else -1
-        except LookupError:
-            order = 0
+        except LookupError as exc:
+            self.log.debug(
+                "Error when determining API favorite order (%s: %s)",
+                exc.__class__.__name__, exc)
+            order = -1
+        else:
+            self.log.debug("API yields favorites in %sscending order",
+                           "a" if order > 0 else "de")
 
-        if order > 0:
-            self.log.debug("API yields favorites in ascending order")
+        order_favs = self.config("order-posts")
+        if order_favs and order_favs[0] in ("r", "a"):
             self.log.debug("Returning them in reverse")
-            return self._pagination_reverse(params, count)
+            order = -order
 
-        self.log.debug("API yields favorites in descending order")
-        return self._pagination(params, count)
+        if order < 0:
+            return self._pagination(params, count)
+        return self._pagination_reverse(params, count)
 
     def _pagination(self, params, count):
         if self.offset:
@@ -203,7 +233,7 @@ class GelbooruFavoriteExtractor(GelbooruBase,
         params["limit"] = self.per_page
 
         while True:
-            favs = self._api_request(params, "favorite", True)
+            favs = self._api_request(params, "favorite")
 
             if not favs:
                 return
@@ -232,7 +262,7 @@ class GelbooruFavoriteExtractor(GelbooruBase,
         params["limit"] = self.per_page
 
         while True:
-            favs = self._api_request(params, "favorite", True)
+            favs = self._api_request(params, "favorite")
             favs.reverse()
 
             if skip:
